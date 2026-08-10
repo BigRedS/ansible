@@ -1,0 +1,17 @@
+---
+# Shared defaults for every machine in linux_boxes. Per-host differences go
+# in host_vars/<hostname>.yml, not here.
+#
+# The extension pattern used throughout this repo: a role default defines a
+# base list (e.g. base_packages), and a host_vars file can either replace it
+# outright or extend it, e.g.:
+#
+#   base_packages: "{{ base_packages + ['htop', 'ncdu'] }}"
+#
+# This works because role defaults are the lowest-precedence variable layer,
+# so the host_vars template renders using the role's default list.
+
+# --- otelcol / Coralogix -----------------------------------------------
+# otelcol_coralogix_private_key lives in group_vars/all/vault.yml (encrypted
+# with ansible-vault). See vault.yml.example for how to create it.
+otelcol_coralogix_domain: eu2.coralogix.com 

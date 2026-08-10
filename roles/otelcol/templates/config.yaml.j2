@@ -1,0 +1,80 @@
+{{ ansible_managed | comment }}
+receivers:
+{% if otelcol_enable_hostmetrics %}
+  hostmetrics:
+    collection_interval: 60s
+    scrapers:
+      cpu:
+      memory:
+      disk:
+      filesystem:
+      load:
+      network:
+{% if otelcol_hostmetrics_processes_scraper %}
+      processes:
+{% endif %}
+{% endif %}
+{% for p in otelcol_filelog_pipelines %}
+  filelog/{{ p.name }}:
+    include: {{ p.include | to_json }}
+{% if p.exclude is defined %}
+    exclude: {{ p.exclude | to_json }}
+{% endif %}
+    start_at: {{ p.start_at | default('end') }}
+{% if p.operators is defined %}
+    operators: {{ p.operators | to_json }}
+{% endif %}
+    resource:
+      cx.application.name: "{{ p.application_name }}"
+      cx.subsystem.name: "{{ p.subsystem_name }}"
+{% endfor %}
+{% if otelcol_enable_journald %}
+  journald:
+    start_at: end
+{% if otelcol_journald_units %}
+    units: {{ otelcol_journald_units | to_json }}
+{% endif %}
+    resource:
+      cx.application.name: "{{ otelcol_journald_application_name }}"
+      cx.subsystem.name: "{{ otelcol_journald_subsystem_name }}"
+{% endif %}
+
+processors:
+  resource:
+    attributes:
+      - key: host.name
+        value: "{{ inventory_hostname }}"
+        action: upsert
+  batch:
+
+exporters:
+  coralogix:
+    domain: "{{ otelcol_coralogix_domain }}"
+    private_key: "{{ otelcol_coralogix_private_key }}"
+    application_name: "{{ otelcol_coralogix_application_name }}"
+    subsystem_name: "{{ otelcol_coralogix_subsystem_name }}"
+    application_name_attributes: [cx.application.name]
+    subsystem_name_attributes: [cx.subsystem.name]
+    timeout: 30s
+
+service:
+  pipelines:
+{% if otelcol_enable_hostmetrics %}
+    metrics:
+      receivers: [hostmetrics]
+      processors: [resource, batch]
+      exporters: [coralogix]
+{% endif %}
+{% set otelcol_log_receivers = namespace(names=[]) %}
+{% for p in otelcol_filelog_pipelines %}
+{% set otelcol_log_receivers.names = otelcol_log_receivers.names + ['filelog/' + p.name] %}
+{% endfor %}
+{% if otelcol_enable_journald %}
+{% set otelcol_log_receivers.names = otelcol_log_receivers.names + ['journald'] %}
+{% endif %}
+{% if otelcol_log_receivers.names %}
+    logs:
+      receivers: [{{ otelcol_log_receivers.names | join(', ') }}]
+      processors: [resource, batch]
+      exporters: [coralogix]
+{% endif %}

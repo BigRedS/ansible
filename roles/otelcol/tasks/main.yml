@@ -1,0 +1,58 @@
+---
+- name: Map machine architecture to otelcol-contrib release naming
+  ansible.builtin.set_fact:
+    otelcol_arch: "{{ {'x86_64': 'amd64', 'aarch64': 'arm64'}[ansible_architecture] }}"
+
+- name: Check currently installed otelcol-contrib version
+  ansible.builtin.command: dpkg-query -W -f='${Version}' otelcol-contrib
+  register: otelcol_installed_version
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Download otelcol-contrib package
+  ansible.builtin.get_url:
+    url: "https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v{{ otelcol_version }}/otelcol-contrib_{{ otelcol_version }}_linux_{{ otelcol_arch }}.deb"
+    dest: "/tmp/otelcol-contrib_{{ otelcol_version }}_{{ otelcol_arch }}.deb"
+    mode: "0644"
+  when: otelcol_installed_version.stdout != otelcol_version
+  check_mode: false
+
+- name: Install otelcol-contrib
+  ansible.builtin.apt:
+    deb: "/tmp/otelcol-contrib_{{ otelcol_version }}_{{ otelcol_arch }}.deb"
+  become: true
+  when: otelcol_installed_version.stdout != otelcol_version
+
+- name: Add otelcol-contrib to extra groups
+  ansible.builtin.user:
+    name: otelcol-contrib
+    groups: "{{ otelcol_extra_groups + (['systemd-journal'] if otelcol_enable_journald else []) }}"
+    append: true
+  become: true
+  when: (otelcol_extra_groups | length > 0) or otelcol_enable_journald
+  notify: Restart otelcol-contrib
+
+- name: Ensure otelcol-contrib config directory exists
+  ansible.builtin.file:
+    path: /etc/otelcol-contrib
+    state: directory
+    mode: "0755"
+  become: true
+
+- name: Deploy otelcol-contrib config
+  ansible.builtin.template:
+    src: config.yaml.j2
+    dest: /etc/otelcol-contrib/config.yaml
+    owner: root
+    group: otelcol-contrib
+    mode: "0640"
+  become: true
+  notify: Restart otelcol-contrib
+
+- name: Enable and start otelcol-contrib
+  ansible.builtin.systemd:
+    name: otelcol-contrib
+    enabled: true
+    state: started
+  become: true

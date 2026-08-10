@@ -1,0 +1,50 @@
+---
+# Copy to host_vars/<real-hostname>.yml and adjust. Everything here is
+# optional - omit anything you're happy to inherit from group_vars/all.
+
+# Extend (not replace) the shared package list:
+# base_packages: "{{ base_packages + ['htop', 'ncdu'] }}"
+
+# Coralogix application/subsystem naming for this host's telemetry.
+# Defaults to the ansible hostname for both if omitted:
+# otelcol_coralogix_application_name: my-desktop
+# otelcol_coralogix_subsystem_name: host-metrics
+
+# Include the "processes" hostmetrics scraper on top of the always-on set
+# (cpu, memory, disk, filesystem, load, network):
+# otelcol_hostmetrics_processes_scraper: true
+
+# Ship specific log files from this host via otelcol's filelog receiver.
+# Each entry becomes its own filelog/<name> receiver feeding the shared
+# "logs" pipeline, and always reports under its own application_name/
+# subsystem_name (required per entry - they don't fall back to the host
+# defaults above). Assign the full list directly rather than extending it
+# (see the override-pattern caveat in README.md):
+# otelcol_filelog_pipelines:
+#   - name: nginx
+#     include: ["/var/log/nginx/*.log"]
+#     application_name: my-desktop
+#     subsystem_name: nginx
+
+# Ship the systemd journal (syslog, auth, kernel, everything else) instead
+# of/alongside filelog - the right choice on boxes with no flat
+# /var/log/syslog or /var/log/auth.log (journald-only, no rsyslog). Reports
+# under otelcol_journald_application_name (default: this host's default
+# application_name) / otelcol_journald_subsystem_name (default: "syslog").
+# otelcol_enable_journald: true
+# otelcol_journald_units: ["ssh", "sudo"]   # omit for the whole journal
+
+# Extra groups for the otelcol-contrib service user - e.g. needed if a
+# filelog path above is only readable via group membership. Not needed for
+# journald - that's handled automatically when otelcol_enable_journald is set:
+# otelcol_extra_groups: ["some-group"]
+
+# chezmoi dotfiles source for whichever user should be managed here:
+# chezmoi_user: avi
+# chezmoi_source_repo: git@github.com:example/dotfiles.git
+
+# Extra ufw allow rules on top of the default (ssh):
+# ufw_rules: "{{ ufw_rules + [{'rule': 'allow', 'port': '8080', 'proto': 'tcp'}] }}"
+# Only flip these once you're ready to hand this host's firewall fully to ansible:
+# ufw_manage_defaults: true
+# ufw_enable: true

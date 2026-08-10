@@ -1,0 +1,15 @@
+---
+- name: Apply shared baseline to partially-managed linux boxes
+  hosts: linux_boxes
+  gather_facts: true
+  roles:
+    - role: base_packages
+      tags: [base_packages]
+    - role: otelcol
+      tags: [otelcol]
+    - role: chezmoi
+      tags: [chezmoi]
+    # ufw: disabled for now - re-enable by uncommenting once you're ready to
+    # let ansible manage firewall rules (see README's ufw safety notes).
+    # - role: ufw
+    #   tags: [ufw]

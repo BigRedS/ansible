@@ -1,0 +1,12 @@
+---
+otelcol_coralogix_domain: eu2.coralogix.com
+
+otelcol_filelog_pipelines:
+  - name: syslog
+    include: ["/var/log/syslog"]
+    application_name: syslog
+    subsystem_name: syslog
+  - name: authlog
+    include: ["/var/log/auth.log"]
+    application_name: syslog
+    subsystem_name: authlog
