@@ -1,0 +1,11 @@
+---
+# Installed from Tailscale's own apt repo, keyed off ansible_distribution/
+# ansible_distribution_release - state: latest upgrades it on every run and
+# installs it fresh on the rare host that doesn't have it yet. No version
+# to pin here. If a host already has a Tailscale apt source configured
+# (the expected case - see tasks/main.yaml), this role reuses it rather
+# than adding a conflicting one of its own.
+#
+# Deliberately does NOT run `tailscale up` - every host in this repo is
+# assumed to already be authenticated onto the tailnet (see README's
+# tailscale safety note); this role only keeps the package current.

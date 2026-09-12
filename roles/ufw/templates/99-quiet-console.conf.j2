@@ -1,0 +1,10 @@
+{{ ansible_managed | comment }}
+# UFW logs blocked packets via a kernel netfilter LOG rule at "warning"
+# priority. If the console log level is high enough, the kernel echoes
+# those straight to every attached tty/serial console - the classic
+# "[UFW BLOCK]" spam. Dropping console_loglevel (the first number below)
+# to 4 suppresses warning-and-below from the console while leaving
+# err-and-worse (crit/alert/emerg - e.g. failing disks) visible, and
+# doesn't affect the kernel ring buffer, journal, or /var/log/kern.log,
+# which still get everything regardless of this setting.
+kernel.printk = 4 4 1 7

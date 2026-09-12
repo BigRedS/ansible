@@ -1,0 +1,14 @@
+---
+- name: Reload sysctl
+  ansible.builtin.command: sysctl --system
+  become: true
+
+- name: Restart k3s
+  ansible.builtin.systemd:
+    name: k3s
+    state: restarted
+  become: true
+  # No-op the first time round: the install task starts k3s fresh (with
+  # config.yaml already in place) rather than restarting it, so this
+  # handler only fires on later config changes.
+  when: k3s_binary.stat.exists | default(false)

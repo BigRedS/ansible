@@ -1,0 +1,31 @@
+---
+all:
+  children:
+    # Linux boxes get very basics - otelcol, vim, perl etc.
+    linux_boxes:
+      hosts:
+        donkey:
+          ansible_host: donkey.avi.st
+        swamp:
+          ansible_host: swamp
+        fairygodmother:
+          ansible_host: fgm
+        merlin:
+         ansible_host: localhost
+        x1:
+          ansible_host: x1.taila5db6b.ts.net
+      vars:
+        ansible_user: ansible
+        ansible_ssh_private_key_file: ~/.ssh/ansible_svc_user
+    # Clients are machines that get work done on them - k8s_tools, claude, nodejs (for skills) etc.
+    clients:
+      hosts:
+        merlin:
+        x1:
+    nfs_servers:
+      hosts:
+        fairygodmother:
+    k3s_servers:
+      hosts:
+        donkey:
+

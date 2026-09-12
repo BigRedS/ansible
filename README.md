@@ -1,122 +1,146 @@
 # ansible
 
-Partial, defaults-plus-overrides Ansible control for a handful of ordinary
-Linux machines that are otherwise managed and fiddled with by hand. This
-repo does **not** try to own everything about a host - only:
+Some ansile for the common-to-everything stuff on my computers:
 
-- `base_packages` - a shared apt package list (perl, vim, git, tmux, ...)
-- `otelcol` - installs `otelcol-contrib` and points it at Coralogix
-- `chezmoi` - installs the chezmoi binary and (optionally) bootstraps it from a dotfiles repo
-- `ufw` - manages allow rules, with enabling/default-deny opt-in per host
-  (currently commented out of `site.yml` - not applied to any host yet)
+* `ansible_svc_user` - creates a dedicated `ansible` user on each host for future ansible-connection bootstrapping. A human must set a password by hand
+* `apache` - currently just used to keep Apache on ipv4 on donkey, leaving the ipv6 interface for k3s
+* `base-packages` - apt package list, from Debian repos
+* `chezmoi` - installs chezmoi, still need to manually set it up with ssh keys and github and whatnot
+* `docker_compose_ipv4_ports` - just keeps docker-compose stuff on ipv4 on donkey, leaving ipv6 for k3s
+* `otelcol` - set up OpenTelemetry Collector to send hostmetrics to Coralogix; optionally (`otelcol_enable_otlp_receiver`) also accepts OTLP from the network on the standard ports and forwards that on too
+* `tailscale` - installs tailscale, doesn't try to configure, but probaly will cause an connection-drop on upgrade
+* `ufw` - firewall; rules are additive/always-applied but default-deny + actually enabling it are opt-in per host (`ufw_manage_defaults`/`ufw_enable`, both off by default) - enabled on `donkey` (see host_vars). Also sets `ufw_quiet_console` (on by default, everywhere) to stop kernel warning-level messages (blocked packets included) spamming every tty/console
 
-Each role ships sane shared defaults; each host overrides only what's
-different about it. Nothing here assumes a clean-slate machine - roles are
-written to be safe to run against a box that's already been configured by
-hand (see "Safety notes" below).
+and some common-to-PCs stuff:
 
-## Layout
+* `claude_code` - claude code, and then also `nodejs` to get the skills
+* `coralogix_cli`
+* `flatpak` - installs flatpak, adds the flathub remote
+* `k8s_tools` - k8s tools, plus krew and a fixed set of krew plugins (see `k8s_tools_krew_plugins`)
+* `opentofu` - installs opentofu
 
-```
-ansible.cfg          # inventory path, safe defaults
-site.yml              # entrypoint, applies roles to linux_boxes (ufw commented out for now)
-inventory/hosts.yml    # add your real hosts here
-group_vars/all/        # shared defaults (main.yml) + gitignored secrets (vault.yml)
-host_vars/              # per-host overrides, one file per hostname
-roles/
-  base_packages/
-  otelcol/
-  chezmoi/
-  ufw/
-```
+and some host-specific stuff:
 
-## First-time setup
+* `nfs_server` - exports directories over NFS (`nfs_server_exports`), applied to the `nfs_servers` inventory group
+* `k3s` - installs an ipv6-only k3s server (`k3s_node_ip`/`k3s_cluster_cidr`/`k3s_service_cidr`, all required), applied to the `k3s_servers` inventory group. Also fetches+merges its kubeconfig into the control node's `~/.kube/config` under a given name (`k3s_kubeconfig_name`, no-op if unset) - tagged `kubeconfig` so it can be re-run on its own
 
-```bash
-ansible-galaxy collection install -r requirements.yml
+## Run Ansible
 
-# add real hosts
-$EDITOR inventory/hosts.yml
+Set up an environment with the **ansible** user's passord:
 
-# create the secrets file - group_vars/all/vault.yml is gitignored, so it's
-# kept in cleartext rather than ansible-vault encrypted. Fine for a
-# single-user, not-pushed-anywhere repo like this one; if that stops being
-# true, `ansible-vault encrypt` it instead and drop it from .gitignore.
-cp group_vars/all/vault.yml.example group_vars/all/vault.yml
-$EDITOR group_vars/all/vault.yml   # set otelcol_coralogix_private_key
+    source ./ansible-shell
 
-# per host, copy and edit an overrides file
-cp host_vars/example-host.yml.example host_vars/<real-hostname>.yml
-$EDITOR host_vars/<real-hostname>.yml
-```
+Then run ansible, there's no need to use -K. First check:
 
-## Running
+    ansible-playbook site.yaml --tags <tags> --limit <hostname> --check --diff
 
-```bash
-# everything
-ansible-playbook site.yml
+Then run it for real:
 
-# just one aspect, on one host
-ansible-playbook site.yml --tags otelcol --limit <hostname>
+    ansible-playbook site.yaml --tags <tags> --limit <hostname>
 
-# see what would change without applying it
-ansible-playbook site.yml --check --diff
-```
+## Authentication
 
-Use `--check --diff` liberally on machines that are also managed by hand -
-it's the cheapest way to confirm ansible isn't about to fight someone's
-manual changes before you actually run it.
+Sourcing `ansible-shell` prompts for a sudo password and then creates aliases for ansible commands that set this password.
 
-## The override pattern
+This is the password for the `ansible` user on each of the hosts, _not_ `avi`.
 
-Role defaults live in `roles/<role>/defaults/main.yml` - the lowest-precedence
-variable layer. A `host_vars/<hostname>.yml` file can reference the same
-variable name to *extend* rather than replace it, because the default is
-still what resolves inside the template:
+## Adding a new host
 
+Create a `host_vars/<hostname>.yaml` by copying an existing one, but add an override to use the `avi` user:
 ```yaml
-# host_vars/my-desktop.yml
-base_packages: "{{ base_packages + ['htop', 'ncdu'] }}"
-ufw_rules: "{{ ufw_rules + [{'rule': 'allow', 'port': '8080', 'proto': 'tcp'}] }}"
+ansible_user: avi
+ansible_ssh_private_key_file: ~/.ssh/id_ed25519
 ```
+then run ansible with `--tags ansible_svc_user --limit <newhost> -K` to create an ansible user and set the nopasswd sudo (grab it from bitwarden)
 
-Or override outright by just assigning a plain value instead of extending.
+Set the account's password by hand (`sudo passwd ansible`, from bitwarden), and remove the override
 
-**Caveat:** this self-referencing extend pattern (`foo: "{{ foo + [...] }}"`)
-throws `Recursive loop detected in template` on ansible-core 2.19.4 (the
-version currently installed here) - confirmed with a minimal repro outside
-this repo's roles, so it's not specific to `base_packages`/`ufw_rules`.
-Until that's resolved (older ansible-core, or a different mechanism),
-override outright with the full value instead - see `host_vars/donkey.yaml`
-for an example that assigns `otelcol_filelog_pipelines` directly rather
-than extending it.
 
-## Safety notes (partial control, on purpose)
+## Potential Beatraps (found by claude):
 
-- **ufw**: allow rules are always applied (additive, harmless), but setting
-  default-deny (`ufw_manage_defaults`) and actually enabling ufw
-  (`ufw_enable`) are both off by default. Flip them per-host only once
-  you're ready to hand that host's firewall fully to ansible - otherwise
-  this role is a no-op beyond making sure your allow-list is present.
-- **chezmoi**: only installs the binary by default. It will run
-  `chezmoi init --apply` exactly once (guarded on the source directory not
-  yet existing) if you set `chezmoi_source_repo` - it will not keep re-
-  applying and clobbering changes made by hand afterwards.
-- **otelcol**: installs a specific pinned version
-  (`otelcol_version`) from the upstream GitHub releases and fully owns
-  `/etc/otelcol-contrib/config.yaml`. This one *is* meant to be fully
-  ansible-managed; there's no natural "partial" state for a collector config.
-
-## Things to double check before relying on this
-
-- `otelcol_coralogix_domain` in `group_vars/all/main.yml` - this needs to
-  match your Coralogix account's actual ingestion region/domain; it wasn't
-  verified against live Coralogix docs when this repo was scaffolded.
-- The otelcol config template ships with a `hostmetrics` metrics pipeline
-  by default, plus opt-in logs sources: set `otelcol_filelog_pipelines`
-  (empty by default) in a host's `host_vars/<hostname>.yml` to tail specific
-  log files, and/or `otelcol_enable_journald: true` to ship the systemd
-  journal (syslog/auth/etc.) directly - useful on Debian boxes that don't
-  keep flat files like `/var/log/syslog`. See
-  `host_vars/example-host.yml.example` for the shape of both, including
-  routing individual sources to their own Coralogix application/subsystem.
+- **ansible-shell**: feeds the become password via a short-lived mode-600
+  temp file (`_ansible_become_password_file`), not process substitution -
+  ansible-core can't open a `<(...)`'s resolved `/proc/.../fd/pipe:[N]` path
+  ("password file ... was not found").
+- **ansible_svc_user**: only `donkey` sets `PasswordAuthentication no`
+  globally, so the role enforces key-only login for just the `ansible`
+  account via a `Match User` drop-in in `/etc/ssh/sshd_config.d/` (assumes
+  the stock `Include` line for that directory is still present). The
+  account is created locked and never touched again after - set its
+  password by hand (`sudo passwd ansible`), same value on every host.
+- **Raspberry Pi OS** (`fairygodmother`) ships `/etc/sudoers.d/010_pi-nopasswd`
+  (NOPASSWD for the first-boot user), baked into the image by `userconf-pi`,
+  not by ansible or this repo. Commented out on the host directly; don't
+  rely on it regardless - `ansible.cfg` never assumes passwordless sudo.
+- **otelcol**'s OTLP receiver (`otelcol_enable_otlp_receiver`) binds
+  `0.0.0.0:4317`/`4318` with no auth in front of it - anything on the
+  network can feed it telemetry that gets forwarded to Coralogix under that
+  host's account. No host has this on currently; add a `ufw` rule before
+  ever turning it on.
+- The self-referencing extend pattern (`foo: "{{ foo + [...] }}"`) throws
+  "Recursive loop detected in template" on the installed ansible-core -
+  assign the full value directly instead (see `host_vars/donkey.yaml`'s
+  `otelcol_filelog_pipelines`).
+- **tailscale**: installs/upgrades only, doesn't manage tailnets - upgrading
+  while connected through it drops the connection. Reuses a host's existing
+  apt source for the repo if one's already there, rather than adding a
+  second, differently-keyed one (which makes apt hard-error).
+- **ufw**: sets its own `update_cache`/`cache_valid_time`, independently of
+  `base_packages` - needed because `--tags ufw` alone skips that role.
+  `ufw_quiet_console` (on by default) drops the kernel's console log level
+  so `[UFW BLOCK]` messages stop hitting every tty - a `kernel.printk`
+  setting, not syslog, and doesn't affect what's logged elsewhere. On
+  `donkey`: only 22/80/443 open generally, plus 6443 (k3s's API) restricted
+  to the `tailscale0` interface. Deliberately doesn't open gogs'
+  git-over-ssh port (2222) - `git clone`/`push` over
+  `ssh://git@git.avi.st:2222/...` only works from inside the tailnet now.
+- **k8s_tools/krew**: installed per-user (`~/.krew`), unlike the rest of the
+  role. Ansible doesn't add `~/.krew/bin` to `PATH` - do that by hand or via
+  chezmoi.
+- **chezmoi**: `chezmoi_user` has no default and must be set explicitly
+  alongside `chezmoi_source_repo` - it used to default to `ansible_user`,
+  which broke the moment that stopped meaning "the human operator".
+- otelcol ships a `hostmetrics` pipeline by default; logs are opt-in via
+  `otelcol_filelog_pipelines` (tail specific files) and/or
+  `otelcol_enable_journald: true` (ship the systemd journal).
+- `k8s_tools_k9s_version`/`k8s_tools_kubectx_version` - pinned GitHub
+  releases, no apt repo to track: bump by hand
+  ([k9s](https://github.com/derailed/k9s/releases),
+  [kubectx](https://github.com/ahmetb/kubectx/releases)).
+- `k8s_tools_helm_version` - installed from `get.helm.sh`, not helm's own
+  apt repo: that repo's TLS chain roots at a CA Debian trixie's
+  `ca-certificates` doesn't carry yet (as of 2026-08). Revisit once fixed;
+  bump by checking [helm releases](https://github.com/helm/helm/releases).
+- `nodejs_major_version` - pinned Node major; bump by hand for a new one.
+- `coralogix_cli_version` - pinned GitHub release, bump by hand. `cx
+  profiles add` still needs running by hand per client - not
+  ansible-managed.
+- `nfs_server`: only applied to the `nfs_servers` group, not all of
+  `linux_boxes`. No firewall rule opens NFS's ports - add one before
+  relying on this beyond a trusted network.
+- `nfs_server` on `fairygodmother`: a leftover `cockpit-file-sharing` export
+  file used to break `exportfs -ra` (an invalid byte in its output tripped
+  ansible's UTF-8 check) - fixed by deleting it and folding that export
+  into `nfs_server_exports` directly.
+- `apache`/`docker_compose_ipv4_ports` on `donkey`: donkey's Apache wasn't
+  installed by ansible (`nginx-common`/`/etc/nginx` is an unrelated orphaned
+  remnant) - these roles just pin Apache's `Listen` address and gogs'
+  compose ports to IPv4, freeing the IPv6 address for k3s. Applying either
+  restarts Apache/recreates the gogs container, briefly taking down every
+  vhost on the box.
+- `k3s`: IPv6-primary - cluster/service CIDRs are a ULA range NAT'd out via
+  `flannel-ipv6-masq`, `k3s_node_ip` is the host's real public IPv6.
+  Optionally dual-stack for pod *egress* only (`k3s_node_ip_v4`, e.g. to
+  reach IPv4-only external APIs) - the bundled Traefik is pinned to
+  IPv6-only regardless (`templates/traefik-helmchartconfig.yaml.j2`), so it
+  never claims the IPv4 port apache/docker already use. CoreDNS forwards
+  via a k3s-specific `resolv.conf` of IPv6-only public resolvers, since the
+  pod network has no IPv4 route out. A sysctl
+  (`net.ipv6.conf.all.accept_ra = 2`) stops k3s losing its IPv6 default
+  route after install.
+- `k3s` kubeconfig fetch/merge: k3s bakes a loopback address (`127.0.0.1` or
+  `[::1]`, depending on IP family) into its generated kubeconfig, and its
+  cert is only valid for `k3s_node_ip`/`k3s_tls_san` - `k3s_kubeconfig_server_host`
+  plus an entry in `k3s_tls_san` point both at the host's Tailscale IP
+  instead. Existing kubeconfig entries (and whichever is `current-context`)
+  are left alone; only a same-named entry gets overwritten.

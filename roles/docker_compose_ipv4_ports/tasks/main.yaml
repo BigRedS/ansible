@@ -1,0 +1,15 @@
+---
+- name: Pin docker-compose published ports to an explicit bind address
+  ansible.builtin.replace:
+    path: "{{ item.0.file }}"
+    regexp: '^(\s*-\s*)"?{{ item.1 | regex_escape }}"?\s*$'
+    replace: '\1"{{ item.0.bind_address }}:{{ item.1 }}"'
+  loop: "{{ docker_compose_ipv4_ports | subelements('ports') }}"
+  register: compose_port_changes
+
+- name: Recreate docker compose stacks with changed port bindings
+  ansible.builtin.command:
+    cmd: docker compose up -d
+    chdir: "{{ item }}"
+  loop: "{{ docker_compose_ipv4_ports | map(attribute='file') | map('dirname') | unique | list }}"
+  when: compose_port_changes.changed

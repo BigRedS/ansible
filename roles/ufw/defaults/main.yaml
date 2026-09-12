@@ -1,0 +1,29 @@
+---
+# Rules are always applied (allow rules are additive/non-destructive).
+# Extend per-host with the self-reference pattern, e.g.:
+#   ufw_rules: "{{ ufw_rules + [{'rule': 'allow', 'port': '8080', 'proto': 'tcp'}] }}"
+# Optional per-rule `interface_in` restricts the rule to traffic arriving on
+# a given interface (e.g. "tailscale0"), covering both address families -
+# handy for exposing something only to a VPN/overlay rather than the
+# internet at large.
+ufw_rules:
+  - rule: allow
+    port: "22"
+    proto: tcp
+
+# These two are the "destructive" bits: setting default-deny and actually
+# enabling ufw on a host that may already have its own firewall setup.
+# Left off by default so adding this role to a host is a no-op until you
+# deliberately opt that host in.
+ufw_manage_defaults: false
+ufw_default_incoming: deny
+ufw_default_outgoing: allow
+ufw_enable: false
+
+# On by default, everywhere the ufw role is applied - stops UFW's
+# blocked-packet logging (and any other kernel warning-level messages)
+# from spamming every attached tty/console, regardless of whether this
+# particular host has actually enabled ufw yet. Set false per-host to opt
+# out. See templates/99-quiet-console.conf.j2 for what this actually
+# changes and why.
+ufw_quiet_console: true

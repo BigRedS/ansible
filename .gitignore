@@ -1,3 +1,3 @@
 *.retry
 .vault-pass
-group_vars/all/vault.yml
+group_vars/all/vault.yaml

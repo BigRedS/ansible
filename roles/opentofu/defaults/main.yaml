@@ -1,0 +1,4 @@
+---
+# Installed from OpenTofu's own apt repo (packages.opentofu.org), same
+# pattern as kubectl in k8s_tools - no version pin needed here, "apt
+# upgrade"/state: latest keeps it current on every run.

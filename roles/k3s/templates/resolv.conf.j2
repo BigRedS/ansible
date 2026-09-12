@@ -1,0 +1,9 @@
+{{ ansible_managed | comment }}
+# k3s's own upstream resolver, deliberately separate from this host's real
+# /etc/resolv.conf (Tailscale-managed, IPv4-only upstream) - the pod network
+# is single-stack IPv6 with no IPv4 route out, so CoreDNS (which forwards
+# using this file, via k3s's resolv-conf setting in config.yaml.j2) needs an
+# upstream it can actually reach.
+{% for ns in k3s_dns_nameservers %}
+nameserver {{ ns }}
+{% endfor %}

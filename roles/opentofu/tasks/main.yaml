@@ -1,0 +1,46 @@
+---
+- name: Ensure prerequisite packages for adding apt repos are present
+  ansible.builtin.apt:
+    name: [ca-certificates, curl, gnupg, apt-transport-https]
+    state: present
+  become: true
+
+- name: Create apt keyrings directory
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: "0755"
+  become: true
+
+# OpenTofu ships two keys for this repo: a release-signing key (already in
+# binary keyring format - no dearmor needed) and the repo signing key
+# (armored, needs dearmoring). Both are required by the [signed-by=...] line
+# below. See https://opentofu.org/docs/intro/install/deb/
+- name: Download the OpenTofu release signing key
+  ansible.builtin.get_url:
+    url: https://get.opentofu.org/opentofu.gpg
+    dest: /etc/apt/keyrings/opentofu.gpg
+    mode: "0644"
+  become: true
+
+- name: Download and dearmor the OpenTofu repo signing key
+  ansible.builtin.shell: |
+    set -o pipefail
+    curl -fsSL https://packages.opentofu.org/opentofu/tofu/gpgkey | gpg --no-tty --batch --dearmor -o /etc/apt/keyrings/opentofu-repo.gpg
+  args:
+    creates: /etc/apt/keyrings/opentofu-repo.gpg
+    executable: /bin/bash
+  become: true
+
+- name: Add OpenTofu apt repository
+  ansible.builtin.apt_repository:
+    repo: "deb [signed-by=/etc/apt/keyrings/opentofu.gpg,/etc/apt/keyrings/opentofu-repo.gpg] https://packages.opentofu.org/opentofu/tofu/any/ any main"
+    filename: opentofu
+  become: true
+
+- name: Install OpenTofu
+  ansible.builtin.apt:
+    name: tofu
+    state: latest
+    update_cache: true
+  become: true

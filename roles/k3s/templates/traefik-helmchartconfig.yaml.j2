@@ -1,0 +1,33 @@
+{{ ansible_managed | comment }}
+# Pins the bundled Traefik's own Service to IPv6-only, so it can never pick
+# up a second, IPv4 ClusterIP/LoadBalancer address on a dual-stack cluster -
+# apache/docker already own :80/:443 on this host's IPv4. Belt-and-braces
+# alongside cluster-cidr/service-cidr listing IPv6 first (see config.yaml.j2)
+# rather than relying solely on that default.
+#
+# k3s auto-applies anything dropped in this directory - do not edit
+# /var/lib/rancher/k3s/server/manifests/traefik.yaml directly, k3s
+# overwrites that one with its own defaults on every start.
+#
+# service.spec.* (not service.* directly) - confirmed against the chart's
+# actual rendered Service template (charts/traefik/templates/service.yaml),
+# since k3s's own docs suggest the wrong nesting (service.ipFamilyPolicy),
+# which the chart silently ignores. k3s's base traefik.yaml HelmChart sets
+# service.spec.ipFamilyPolicy: PreferDualStack by default - this file is
+# applied as a second, higher-precedence --values, so it wins.
+#
+# ipFamilyPolicy itself only accepts SingleStack/PreferDualStack/
+# RequireDualStack - there's no "IPv6Only"/"IPv4Only" value. SingleStack
+# plus an explicit ipFamilies list is what actually pins one family.
+apiVersion: helm.cattle.io/v1
+kind: HelmChartConfig
+metadata:
+  name: traefik
+  namespace: kube-system
+spec:
+  valuesContent: |-
+    service:
+      spec:
+        ipFamilyPolicy: SingleStack
+        ipFamilies:
+          - IPv6

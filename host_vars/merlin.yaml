@@ -1,0 +1,6 @@
+---
+otelcol_coralogix_domain: eu2.coralogix.com
+# otelcol in the same group as 'avi' user so it can read my logs
+otelcol_extra_groups: ["avi"]
+otelcol_enable_journald: true
+otelcol_hostmetrics_processes_scraper: true

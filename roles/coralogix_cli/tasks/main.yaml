@@ -1,0 +1,29 @@
+---
+# Installed system-wide (become: true, /usr/local/bin) - same pinned-binary
+# pattern as k9s/kubectx in k8s_tools, since cx-cli has no apt repo.
+- name: Check currently installed cx CLI version
+  ansible.builtin.command: cx --version
+  register: coralogix_cli_installed
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Install/update the Coralogix CLI (cx)
+  ansible.builtin.shell: |
+    set -o pipefail
+    curl -fsSL https://raw.githubusercontent.com/coralogix/cx-cli/master/install.sh | sh
+  args:
+    executable: /bin/bash
+  environment:
+    CX_VERSION: "{{ coralogix_cli_version }}"
+  become: true
+  when: coralogix_cli_version not in coralogix_cli_installed.stdout
+
+# Runs as the connecting user, not become: true - skills need to land in
+# that user's ~/.claude/skills, not root's. Requires npx (nodejs role, must
+# run first - see site.yaml ordering). Always re-applies so bundle updates
+# land on every run, same "tracks latest" approach as the claude_code role;
+# note this step doesn't need a configured cx profile, just the skill files.
+- name: Install Coralogix's bundled skills for Claude Code
+  ansible.builtin.command: >
+    npx --yes skills add {{ coralogix_cli_skill_bundle }} -a claude-code -g -y

@@ -1,0 +1,132 @@
+---
+- name: Ensure k3s doesn't lose its IPv6 default route from router advertisements
+  ansible.builtin.template:
+    src: 99-k3s-ipv6.conf.j2
+    dest: /etc/sysctl.d/99-k3s-ipv6.conf
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  when: k3s_node_ip | length > 0
+  notify: Reload sysctl
+
+- name: Ensure /etc/rancher/k3s exists
+  ansible.builtin.file:
+    path: /etc/rancher/k3s
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  become: true
+  when: k3s_node_ip | length > 0
+
+- name: Give k3s's CoreDNS an upstream resolver it can actually reach (see templates/resolv.conf.j2)
+  ansible.builtin.template:
+    src: resolv.conf.j2
+    dest: /etc/rancher/k3s/resolv.conf
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  when: k3s_node_ip | length > 0
+  notify: Restart k3s
+
+- name: Configure k3s server (single-stack IPv6 - see templates/config.yaml.j2)
+  ansible.builtin.template:
+    src: config.yaml.j2
+    dest: /etc/rancher/k3s/config.yaml
+    owner: root
+    group: root
+    mode: "0600"
+  become: true
+  when: k3s_node_ip | length > 0
+  notify: Restart k3s
+
+- name: Check whether k3s is already installed
+  ansible.builtin.stat:
+    path: /usr/local/bin/k3s
+  register: k3s_binary
+  when: k3s_node_ip | length > 0
+
+- name: Install k3s (config.yaml above supplies all server args, so no INSTALL_K3S_EXEC needed)
+  ansible.builtin.shell: curl -sfL https://get.k3s.io | sh -
+  environment:
+    INSTALL_K3S_VERSION: "{{ k3s_version }}"
+    INSTALL_K3S_SKIP_START: "true"
+  become: true
+  when: k3s_node_ip | length > 0 and not k3s_binary.stat.exists
+
+- name: Ensure k3s is enabled and running
+  ansible.builtin.systemd:
+    name: k3s
+    enabled: true
+    state: started
+  become: true
+  when: k3s_node_ip | length > 0
+
+- name: Pin bundled Traefik to IPv6-only (see templates/traefik-helmchartconfig.yaml.j2)
+  ansible.builtin.template:
+    src: traefik-helmchartconfig.yaml.j2
+    dest: /var/lib/rancher/k3s/server/manifests/traefik-config.yaml
+    owner: root
+    group: root
+    mode: "0600"
+  become: true
+  when: k3s_node_ip_v4 | length > 0
+  # No restart needed - k3s's embedded controller watches this directory and
+  # reconciles the HelmChartConfig against the running Traefik chart on its
+  # own.
+
+- name: Fetch k3s's generated kubeconfig
+  ansible.builtin.fetch:
+    src: /etc/rancher/k3s/k3s.yaml
+    dest: "{{ k3s_kubeconfig_staging_path }}"
+    flat: true
+  become: true
+  when: k3s_kubeconfig_name | length > 0
+  tags: [kubeconfig]
+
+- name: Point the fetched kubeconfig at k3s_kubeconfig_server_host, and rename its cluster/user/context away from k3s's default "default"
+  ansible.builtin.replace:
+    path: "{{ k3s_kubeconfig_staging_path }}"
+    regexp: "{{ item.regexp }}"
+    replace: "{{ item.replace }}"
+  loop:
+    - { regexp: '^(\s*)(-\s*)?name: default\s*$', replace: '\1\2name: {{ k3s_kubeconfig_name }}' }
+    - { regexp: '^(\s*)cluster: default\s*$', replace: '\1cluster: {{ k3s_kubeconfig_name }}' }
+    - { regexp: '^(\s*)user: default\s*$', replace: '\1user: {{ k3s_kubeconfig_name }}' }
+    - { regexp: '^current-context: default\s*$', replace: 'current-context: {{ k3s_kubeconfig_name }}' }
+    - { regexp: '^(\s*)server: https://(127\.0\.0\.1|\[::1\]):6443\s*$', replace: '\1server: https://{{ k3s_kubeconfig_server_host }}:6443' }
+  delegate_to: localhost
+  become: false
+  when: k3s_kubeconfig_name | length > 0
+  tags: [kubeconfig]
+
+- name: Merge the renamed kubeconfig into the operator's local kubeconfig
+  # Staging file listed first: kubectl's merge keeps the *first* entry it
+  # sees for a duplicate name, so a re-run against an existing cluster name
+  # (e.g. after k3s was uninstalled/reinstalled with a new CA) picks up the
+  # fresh cluster/user/context instead of silently keeping the stale one
+  # already in k3s_kubeconfig_dest.
+  ansible.builtin.shell: >
+    KUBECONFIG={{ k3s_kubeconfig_staging_path }}:{{ k3s_kubeconfig_dest }}
+    kubectl config view --flatten > {{ k3s_kubeconfig_staging_path }}.merged
+    && mv {{ k3s_kubeconfig_staging_path }}.merged {{ k3s_kubeconfig_dest }}
+  args:
+    executable: /bin/bash
+  delegate_to: localhost
+  become: false
+  when: k3s_kubeconfig_name | length > 0
+  tags: [kubeconfig]
+
+- name: Keep kubeconfig files private
+  ansible.builtin.file:
+    path: "{{ item }}"
+    mode: "0600"
+  loop:
+    - "{{ k3s_kubeconfig_dest }}"
+    - "{{ k3s_kubeconfig_staging_path }}"
+  delegate_to: localhost
+  become: false
+  when: k3s_kubeconfig_name | length > 0
+  tags: [kubeconfig]

@@ -1,0 +1,32 @@
+---
+# kubectl: tracks the Kubernetes apt repo's per-minor-version stream
+# (https://pkgs.k8s.io) - Kubernetes only publishes one stream per minor,
+# so this needs bumping by hand when you want to move to a new minor
+# version. Within that minor, plain "apt upgrade" (and this role's
+# state: latest) keeps kubectl current on patch releases.
+k8s_tools_kubectl_minor: "1.36"
+
+# k9s, kubectx/kubens, and helm are all pinned release versions rather than
+# apt-repo latest - bump them here to upgrade. See README's "Things to
+# double check" for how to find the latest.
+k8s_tools_k9s_version: "0.51.0"
+k8s_tools_kubectx_version: "0.11.0"
+
+# helm: pinned rather than tracked via its apt repo (baltocdn.com) because
+# that repo's TLS chain roots at a Let's Encrypt CA ("ISRG Root YR") that
+# Debian's ca-certificates package doesn't carry yet, at least as of
+# 2026-08 on trixie - see README's "Things to double check". Installed from
+# get.helm.sh instead (Helm's own official download host), same
+# pinned-binary pattern as k9s/kubectx below.
+k8s_tools_helm_version: "4.2.3"
+
+# krew plugins to install for every client - see tasks/main.yaml for why
+# this is installed per-user rather than system-wide like the rest of this
+# role. Names must match a plugin manifest in
+# https://github.com/kubernetes-sigs/krew-index/tree/master/plugins
+k8s_tools_krew_plugins:
+  - clog
+  - commander
+  - cs
+  - edit-secret
+  - finalizer-doctor

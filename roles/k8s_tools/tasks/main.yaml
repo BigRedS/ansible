@@ -1,0 +1,165 @@
+---
+- name: Map machine architecture to release naming
+  ansible.builtin.set_fact:
+    # dpkg-style naming: used by the Kubernetes/Helm apt repos and k9s's .deb
+    k8s_tools_dpkg_arch: "{{ {'x86_64': 'amd64', 'aarch64': 'arm64'}[ansible_architecture] }}"
+    # kubectx/kubens release tarball naming
+    k8s_tools_release_arch: "{{ {'x86_64': 'x86_64', 'aarch64': 'arm64'}[ansible_architecture] }}"
+
+- name: Ensure prerequisite packages for adding apt repos are present
+  ansible.builtin.apt:
+    name: [ca-certificates, curl, gnupg, apt-transport-https]
+    state: present
+  become: true
+
+- name: Create apt keyrings directory
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: "0755"
+  become: true
+
+# --- kubectl: Kubernetes apt repo, pinned to one minor-version stream -----
+
+- name: Download and dearmor the Kubernetes apt signing key
+  ansible.builtin.shell: |
+    set -o pipefail
+    curl -fsSL https://pkgs.k8s.io/core:/stable:/v{{ k8s_tools_kubectl_minor }}/deb/Release.key | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+  args:
+    creates: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+    executable: /bin/bash
+  become: true
+
+- name: Add Kubernetes apt repository
+  ansible.builtin.apt_repository:
+    repo: "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v{{ k8s_tools_kubectl_minor }}/deb/ /"
+    filename: kubernetes
+  become: true
+
+- name: Install kubectl
+  ansible.builtin.apt:
+    name: kubectl
+    state: latest
+    update_cache: true
+  become: true
+
+# --- helm: pinned release from get.helm.sh (see defaults for why not the
+# apt repo) -----------------------------------------------------------------
+
+- name: Check whether the pinned helm version is already installed
+  ansible.builtin.stat:
+    path: "/usr/local/bin/helm-{{ k8s_tools_helm_version }}"
+  register: k8s_tools_helm_installed
+
+- name: Download and unpack helm
+  ansible.builtin.unarchive:
+    src: "https://get.helm.sh/helm-v{{ k8s_tools_helm_version }}-linux-{{ k8s_tools_dpkg_arch }}.tar.gz"
+    dest: /tmp
+    remote_src: true
+  when: not k8s_tools_helm_installed.stat.exists
+
+- name: Install pinned helm binary
+  ansible.builtin.copy:
+    src: "/tmp/linux-{{ k8s_tools_dpkg_arch }}/helm"
+    dest: "/usr/local/bin/helm-{{ k8s_tools_helm_version }}"
+    mode: "0755"
+    remote_src: true
+  become: true
+  when: not k8s_tools_helm_installed.stat.exists
+
+- name: Symlink helm to the pinned version
+  ansible.builtin.file:
+    src: "/usr/local/bin/helm-{{ k8s_tools_helm_version }}"
+    dest: /usr/local/bin/helm
+    state: link
+  become: true
+
+# --- k9s: no apt repo, but releases ship a .deb - pinned version, GitHub -
+
+- name: Check currently installed k9s version
+  ansible.builtin.command: dpkg-query -W -f='${Version}' k9s
+  register: k8s_tools_k9s_installed
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Download k9s package
+  ansible.builtin.get_url:
+    url: "https://github.com/derailed/k9s/releases/download/v{{ k8s_tools_k9s_version }}/k9s_linux_{{ k8s_tools_dpkg_arch }}.deb"
+    dest: "/tmp/k9s_{{ k8s_tools_k9s_version }}_{{ k8s_tools_dpkg_arch }}.deb"
+    mode: "0644"
+  when: k8s_tools_k9s_installed.stdout != k8s_tools_k9s_version
+  check_mode: false
+
+- name: Install k9s
+  ansible.builtin.apt:
+    deb: "/tmp/k9s_{{ k8s_tools_k9s_version }}_{{ k8s_tools_dpkg_arch }}.deb"
+  become: true
+  when: k8s_tools_k9s_installed.stdout != k8s_tools_k9s_version
+
+# --- kubectx/kubens: no apt repo or .deb - pinned GitHub release binaries -
+
+- name: Check whether the pinned kubectx/kubens version is already installed
+  ansible.builtin.stat:
+    path: "/usr/local/bin/{{ item }}-{{ k8s_tools_kubectx_version }}"
+  register: k8s_tools_kubectx_installed
+  loop: [kubectx, kubens]
+
+- name: Download and unpack kubectx/kubens
+  ansible.builtin.unarchive:
+    src: "https://github.com/ahmetb/kubectx/releases/download/v{{ k8s_tools_kubectx_version }}/{{ item.item }}_v{{ k8s_tools_kubectx_version }}_linux_{{ k8s_tools_release_arch }}.tar.gz"
+    dest: /tmp
+    remote_src: true
+    mode: "0755"
+  loop: "{{ k8s_tools_kubectx_installed.results }}"
+  when: not item.stat.exists
+
+- name: Install pinned kubectx/kubens binaries
+  ansible.builtin.copy:
+    src: "/tmp/{{ item.item }}"
+    dest: "/usr/local/bin/{{ item.item }}-{{ k8s_tools_kubectx_version }}"
+    mode: "0755"
+    remote_src: true
+  become: true
+  loop: "{{ k8s_tools_kubectx_installed.results }}"
+  when: not item.stat.exists
+
+- name: Symlink kubectx/kubens to the pinned version
+  ansible.builtin.file:
+    src: "/usr/local/bin/{{ item }}-{{ k8s_tools_kubectx_version }}"
+    dest: "/usr/local/bin/{{ item }}"
+    state: link
+  become: true
+  loop: [kubectx, kubens]
+
+# --- krew: kubectl plugin manager - unlike everything above, this installs
+# per-user into ~/.krew rather than system-wide, so none of these tasks use
+# become: true; they run as whichever user ansible connects as.
+
+- name: Install krew (kubectl plugin manager)
+  ansible.builtin.shell: |
+    set -o pipefail
+    cd "$(mktemp -d)" &&
+    OS="$(uname | tr '[:upper:]' '[:lower:]')" &&
+    ARCH="$(uname -m | sed -e 's/x86_64/amd64/' -e 's/\(arm\)\(64\)\?.*/\1\2/' -e 's/aarch64$/arm64/')" &&
+    KREW="krew-${OS}_${ARCH}" &&
+    curl -fsSLO "https://github.com/kubernetes-sigs/krew/releases/latest/download/${KREW}.tar.gz" &&
+    tar zxf "${KREW}.tar.gz" &&
+    ./"${KREW}" install krew
+  args:
+    creates: "{{ ansible_env.HOME }}/.krew/bin/kubectl-krew"
+    executable: /bin/bash
+
+# `kubectl krew install` on an already-installed plugin just logs "skipping,
+# already installed" and exits 0 (confirmed in krew's own source), so this
+# is safe to loop over every run - it'll just be a no-op that ansible can't
+# tell apart from a real install (hence no changed_when).
+- name: Install krew plugins
+  ansible.builtin.command: "{{ ansible_env.HOME }}/.krew/bin/kubectl-krew install {{ item }}"
+  loop: "{{ k8s_tools_krew_plugins }}"
+
+# kubectl resolves plugins from PATH as kubectl-<name> binaries, and krew
+# puts them in ~/.krew/bin - not added to PATH here (this repo doesn't
+# touch shell rc files - see the chezmoi role), so add it by hand or via
+# chezmoi-managed dotfiles:
+#   export PATH="${KREW_ROOT:-$HOME/.krew}/bin:$PATH"

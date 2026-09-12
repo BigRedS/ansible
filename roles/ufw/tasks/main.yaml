@@ -1,0 +1,44 @@
+---
+- name: Install ufw
+  ansible.builtin.apt:
+    name: ufw
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  become: true
+
+- name: Apply ufw default policies
+  community.general.ufw:
+    direction: "{{ item.direction }}"
+    policy: "{{ item.policy }}"
+  loop:
+    - { direction: incoming, policy: "{{ ufw_default_incoming }}" }
+    - { direction: outgoing, policy: "{{ ufw_default_outgoing }}" }
+  become: true
+  when: ufw_manage_defaults
+
+- name: Apply ufw rules
+  community.general.ufw:
+    rule: "{{ item.rule }}"
+    port: "{{ item.port | default(omit) }}"
+    proto: "{{ item.proto | default('any') }}"
+    interface_in: "{{ item.interface_in | default(omit) }}"
+  loop: "{{ ufw_rules }}"
+  become: true
+
+- name: Enable ufw
+  community.general.ufw:
+    state: enabled
+  become: true
+  when: ufw_enable
+
+- name: Stop UFW's blocked-packet logging from spamming every console
+  ansible.builtin.template:
+    src: 99-quiet-console.conf.j2
+    dest: /etc/sysctl.d/99-quiet-console.conf
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  when: ufw_quiet_console
+  notify: Reload sysctl

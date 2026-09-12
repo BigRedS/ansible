@@ -1,0 +1,17 @@
+---
+# Pin specific docker-compose published ports to an explicit bind address,
+# so they stop publishing on IPv6 (docker's default for an unqualified
+# "host:container" port mapping is to bind both 0.0.0.0 and [::]).
+#
+# Each entry rewrites the given compose file's port lines in place (matching
+# them by their current unqualified "host:container" text, e.g. "2222:22")
+# and, if anything changed, runs `docker compose up -d` in that file's
+# directory to recreate the affected containers. Empty by default - a host
+# opts in by setting the full list in its own host_vars/<hostname>.yaml (see
+# the override-pattern caveat in README.md: assign directly, don't extend).
+#
+# docker_compose_ipv4_ports:
+#   - file: /home/avi/sites/git/compose.yaml
+#     bind_address: "0.0.0.0"
+#     ports: ["10880:3000", "2222:22"]
+docker_compose_ipv4_ports: []

@@ -1,6 +1,0 @@
----
-base_packages:
-  - perl
-  - vim
-  - git
-  - tmux

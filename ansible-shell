@@ -1,0 +1,47 @@
+#!/bin/bash
+
+# A file to ease ansibling. All hosts configured by this repo have the same sudo password, sourcing
+# this file prompts for that password and then automatically sets it on successive ansible hosts.
+#
+# This is primarily to make it easier to do ansibling in for loops.
+
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    echo "No! source ${BASH_SOURCE[0]}" >&2
+    return 1 2>/dev/null || exit 1
+fi
+
+read -rp 'Ansible become (sudo) password (for the `ansible` user!): ' ANSIBLE_BECOME_PASSWORD
+export ANSIBLE_BECOME_PASSWORD
+
+# A thing for scripts to test for later as a 'am I in an ansible shell'
+export ANSIBLE_SHELL_ACTIVE=1
+
+# Sourced (not a nested shell/exec), so no .bashrc re-run to fight over
+# PS1 - this just sticks.
+PS1="(ansible) $PS1"
+
+_ansible_become_password_file() {
+    local f
+    f=$(mktemp)
+    chmod 600 "$f"
+    printf '%s' "$ANSIBLE_BECOME_PASSWORD" > "$f"
+    printf '%s' "$f"
+}
+
+ansible() {
+    local pwfile rc
+    pwfile=$(_ansible_become_password_file)
+    command ansible --become-password-file "$pwfile" "$@"
+    rc=$?
+    rm -f "$pwfile"
+    return $rc
+}
+
+ansible-playbook() {
+    local pwfile rc
+    pwfile=$(_ansible_become_password_file)
+    command ansible-playbook --become-password-file "$pwfile" "$@"
+    rc=$?
+    rm -f "$pwfile"
+    return $rc
+}

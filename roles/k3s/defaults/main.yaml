@@ -1,0 +1,53 @@
+---
+# Pinned k3s release - no apt repo to auto-track, bump by checking
+# https://github.com/k3s-io/k3s/releases
+k3s_version: "v1.36.4+k3s1"
+
+# IPv6-primary networking: k3s owns the host's IPv6 address for serving
+# (Ingress/Services default to IPv6 ClusterIPs, since it's listed first in
+# cluster-cidr/service-cidr below). No sane generic default exists for any
+# of these three - a host opts in by setting them all in its own
+# host_vars/<hostname>.yaml. Leaving any unset (default "") makes this role
+# a no-op.
+k3s_node_ip: "" # this host's public IPv6 address
+k3s_cluster_cidr: "" # ULA /56, e.g. fdxx:xxxx:xxxx::/56 - generate a fresh one per cluster: https://www.unique-local-ipv6.com/
+k3s_service_cidr: "" # ULA /112 (k3s's max mask for service-cidr) within the cluster_cidr prefix, e.g. fdxx:xxxx:xxxx:1::/112
+
+# Optional second, IPv4 family - egress-only (e.g. for reaching IPv4-only
+# external APIs that have no IPv6 route). k3s_node_ip_v4 is what pods
+# masquerade out as - the same real IPv4 apache/docker already use for
+# inbound is fine, since NAT egress uses ephemeral ports and doesn't
+# collide with them listening on :80/:443. IPv4 stays listed second
+# everywhere below, so it never becomes the primary family: a HelmChartConfig
+# (templates/traefik-helmchartconfig.yaml.j2) pins the bundled Traefik's own
+# Service to IPv6-only explicitly too, as a second guarantee it never claims
+# an IPv4 port. Leaving this unset keeps the whole host single-stack IPv6, as
+# before.
+k3s_node_ip_v4: "" # this host's real IPv4 address
+k3s_cluster_cidr_v4: "10.42.0.0/16" # k3s's own stock IPv4 default - private/internal, not host-specific
+k3s_service_cidr_v4: "10.43.0.0/16" # k3s's own stock IPv4 default - private/internal, not host-specific
+
+# Upstream resolvers for k3s's own CoreDNS forwarding (see
+# templates/resolv.conf.j2) - IPv6-only, since the pod network has no IPv4
+# route out. Cloudflare + Google's public resolvers; override per-host if
+# ever needed.
+k3s_dns_nameservers:
+  - "2606:4700:4700::1111"
+  - "2001:4860:4860::8888"
+
+# Extra apiserver TLS SANs - empty by default. Needed if anything reaches
+# this host's API by an address other than k3s_node_ip (e.g. its Tailscale
+# IP, if a ufw rule restricts the API port to arriving via tailscale0).
+k3s_tls_san: []
+
+# Fetch this server's kubeconfig down to the control node and merge it into
+# the operator's local kubeconfig (tagged "kubeconfig", so it can also be
+# re-run on its own: --tags kubeconfig). Empty name (default) skips this
+# entirely - a host opts in by naming its cluster.
+k3s_kubeconfig_name: ""
+# Address put into the merged kubeconfig's "server:" field, replacing the
+# 127.0.0.1 k3s always bakes into the original - must be something actually
+# reachable (and covered by k3s_tls_san above), e.g. a Tailscale IP.
+k3s_kubeconfig_server_host: ""
+k3s_kubeconfig_dest: "{{ lookup('env', 'HOME') }}/.kube/config"
+k3s_kubeconfig_staging_path: "{{ lookup('env', 'HOME') }}/.kube/fetched-{{ inventory_hostname }}.yaml"

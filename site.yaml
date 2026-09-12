@@ -1,0 +1,54 @@
+---
+- name: Apply shared baseline to partially-managed linux boxes
+  hosts: linux_boxes
+  gather_facts: true
+  roles:
+    - role: base_packages
+      tags: [base_packages]
+    - role: tailscale
+      tags: [tailscale]
+    - role: otelcol
+      tags: [otelcol]
+    - role: apache
+      tags: [apache]
+    - role: docker_compose_ipv4_ports
+      tags: [docker_compose_ipv4_ports]
+    - role: chezmoi
+      tags: [chezmoi]
+    - role: ufw
+      tags: [ufw]
+    - role: ansible_svc_user
+      tags: [ansible_svc_user]
+
+- name: Apply developer tooling to personal client machines
+  hosts: clients
+  gather_facts: true
+  roles:
+    - role: flatpak
+      tags: [flatpak]
+    - role: nodejs
+      tags: [nodejs]
+    - role: opentofu
+      tags: [opentofu]
+    - role: k8s_tools
+      tags: [k8s_tools]
+    - role: claude_code
+      tags: [claude_code]
+    # coralogix_cli installs its Claude Code skill bundle via `npx`, so it
+    # needs nodejs to have run first.
+    - role: coralogix_cli
+      tags: [coralogix_cli]
+
+- name: Apply NFS server config to hosts that export shares
+  hosts: nfs_servers
+  gather_facts: true
+  roles:
+    - role: nfs_server
+      tags: [nfs_server]
+
+- name: Apply k3s to hosts running a k3s server
+  hosts: k3s_servers
+  gather_facts: true
+  roles:
+    - role: k3s
+      tags: [k3s]

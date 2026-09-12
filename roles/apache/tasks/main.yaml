@@ -1,0 +1,11 @@
+---
+- name: Pin apache2's Listen addresses in ports.conf
+  ansible.builtin.template:
+    src: ports.conf.j2
+    dest: /etc/apache2/ports.conf
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  when: apache_listen_address | length > 0
+  notify: Restart apache2

@@ -1,0 +1,59 @@
+---
+otelcol_version: "0.156.0"
+
+# Coralogix exporter settings. otelcol_coralogix_private_key comes from
+# group_vars/all/vault.yaml (ansible-vault encrypted), not from here.
+otelcol_coralogix_domain: coralogix.com
+otelcol_coralogix_application_name: "{{ inventory_hostname }}"
+otelcol_coralogix_subsystem_name: "{{ inventory_hostname }}"
+
+# Extra groups for the otelcol-contrib service user - needed when a
+# filelog_pipelines entry (below) tails a path that's only readable via
+# group membership (e.g. a user's home directory). Triggers a restart,
+# since group membership is only resolved when the process (re)starts.
+otelcol_extra_groups: []
+
+# hostmetrics: always on at a 60s collection interval. The "processes"
+# scraper is off by default (noisy / not always wanted) - flip
+# otelcol_hostmetrics_processes_scraper on per-host to include it.
+otelcol_enable_hostmetrics: true
+otelcol_hostmetrics_processes_scraper: false
+
+# Per-host log tailing. Empty by default - a host that wants logs shipped
+# extends this list in its own host_vars/<hostname>.yaml (see
+# host_vars/example-host.yaml.example). Each entry becomes its own
+# filelog/<name> receiver feeding the shared "logs" pipeline, and always
+# reports under its own Coralogix application/subsystem:
+#   name:              required, used as the filelog/<name> receiver id
+#   include:           required list of glob paths to tail
+#   application_name:  required, Coralogix application this source reports as
+#   subsystem_name:    required, Coralogix subsystem this source reports as
+#   exclude:           optional list of glob paths to exclude
+#   start_at:          optional, "beginning" or "end" (default "end")
+#   operators:         optional list of stanza operators (e.g. regex_parser)
+#                      for parsing this source's lines
+otelcol_filelog_pipelines: []
+
+# journald: ship the systemd journal (syslog, auth, kernel, everything else)
+# as a single logs source - the right tool on Debian boxes that don't keep
+# flat files like /var/log/syslog or /var/log/auth.log (journald-only by
+# default). Off by default; when enabled, otelcol-contrib is automatically
+# added to the systemd-journal group (and restarted) so it can read the
+# journal - no need to also list that in otelcol_extra_groups.
+otelcol_enable_journald: false
+otelcol_journald_application_name: "{{ otelcol_coralogix_application_name }}"
+otelcol_journald_subsystem_name: syslog
+otelcol_journald_units: [] # empty = no unit filter, ship the whole journal
+
+# OTLP receiver: turns this host's otelcol into a shared ingest point that
+# other things on the network can send metrics/traces/logs to, on the
+# standard OTLP ports (4317 grpc, 4318 http). Off by default (opt in per
+# host in host_vars/<hostname>.yaml) since it means otelcol-contrib listens
+# on all interfaces, not just localhost, with no auth in front of it.
+# Unlike the local hostmetrics/filelog/journald pipelines, OTLP data
+# received this way skips the "resource" processor that stamps host.name -
+# it's not this host's own telemetry, so whatever resource attributes the
+# sender already set are passed through untouched.
+otelcol_enable_otlp_receiver: false
+otelcol_otlp_grpc_endpoint: "0.0.0.0:4317"
+otelcol_otlp_http_endpoint: "0.0.0.0:4318"

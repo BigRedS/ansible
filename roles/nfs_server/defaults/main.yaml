@@ -1,0 +1,10 @@
+---
+# NFS exports for this host. Empty by default - a host that wants to export
+# something sets this in its own host_vars/<hostname>.yaml (see the
+# self-reference caveat in README.md: assign the full list directly rather
+# than extending it). Each entry:
+#   path:     required, directory to export (created if it doesn't exist)
+#   clients:  required list of {host, options}, e.g.:
+#     - host: 192.168.0.5
+#       options: rw,sync,no_subtree_check
+nfs_server_exports: []

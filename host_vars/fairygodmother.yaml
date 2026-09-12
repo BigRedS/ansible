@@ -1,0 +1,18 @@
+---
+# Accept OTLP (grpc 4317 / http 4318) from the network so other things can
+# send telemetry through this host's otelcol, forwarded on to Coralogix.
+otelcol_enable_otlp_receiver: true
+
+nfs_server_exports:
+  - path: /media/fgm/nfs/home-assistant-backups
+    clients:
+      - host: 192.168.0.5
+        options: rw,sync,no_subtree_check
+  - path: /media/fgm/nfs/home-assistant-share
+    clients:
+      - host: 192.168.0.5
+        options: rw,sync,no_subtree_check
+  - path: /media/fgm/nfs/home-assistant-media
+    clients:
+      - host: 192.168.0.5
+        options: rw,sync,no_subtree_check

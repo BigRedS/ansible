@@ -1,0 +1,10 @@
+---
+# IPv4 address apache2 should bind to (e.g. "0.0.0.0" for "any IPv4
+# address"). Empty string (default) means "don't manage ports.conf" - a
+# host must opt in explicitly since this changes what's reachable and
+# restarts apache2.
+#
+# This role doesn't install apache2 or touch sites-available/sites-enabled -
+# it only pins the Listen addresses in ports.conf. Existing <VirtualHost *:...>
+# vhosts keep working unchanged: "*" just means "whatever ports.conf bound".
+apache_listen_address: ""

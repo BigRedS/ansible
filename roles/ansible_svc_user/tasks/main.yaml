@@ -1,0 +1,53 @@
+---
+- name: Create the ansible service account
+  ansible.builtin.user:
+    name: "{{ ansible_svc_user_name }}"
+    shell: /bin/bash
+    create_home: true
+    password: "!"
+    update_password: on_create
+    state: present
+  become: true
+
+- name: Ensure ~ansible/.ssh exists
+  ansible.builtin.file:
+    path: "/home/{{ ansible_svc_user_name }}/.ssh"
+    state: directory
+    owner: "{{ ansible_svc_user_name }}"
+    group: "{{ ansible_svc_user_name }}"
+    mode: "0700"
+  become: true
+
+- name: Install the authorized public key
+  ansible.builtin.copy:
+    content: "{{ ansible_svc_user_public_key }}\n"
+    dest: "/home/{{ ansible_svc_user_name }}/.ssh/authorized_keys"
+    owner: "{{ ansible_svc_user_name }}"
+    group: "{{ ansible_svc_user_name }}"
+    mode: "0600"
+  become: true
+
+- name: Deploy sudoers drop-in for the ansible account
+  ansible.builtin.template:
+    src: sudoers-ansible_svc_user.j2
+    dest: /etc/sudoers.d/010_ansible_svc_user
+    owner: root
+    group: root
+    mode: "0440"
+    validate: "visudo -cf %s"
+  become: true
+
+- name: Deploy sshd Match-User drop-in for the ansible account
+  ansible.builtin.template:
+    src: sshd-ansible_svc_user.conf.j2
+    dest: /etc/ssh/sshd_config.d/10-ansible_svc_user.conf
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  notify: Reload sshd
+
+- name: Validate the full effective sshd config before any reload happens
+  ansible.builtin.command: sshd -t
+  become: true
+  changed_when: false

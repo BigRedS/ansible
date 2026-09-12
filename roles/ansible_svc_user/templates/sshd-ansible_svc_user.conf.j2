@@ -1,0 +1,9 @@
+{{ ansible_managed | comment }}
+# Force key-only login for the dedicated ansible service account,
+# regardless of this host's global PasswordAuthentication setting - only
+# some hosts set that to "no" host-wide, see README beartraps.
+Match User {{ ansible_svc_user_name }}
+    PasswordAuthentication no
+    PubkeyAuthentication yes
+    AuthenticationMethods publickey
+Match all

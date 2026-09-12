@@ -1,9 +1,0 @@
----
-# The user whose dotfiles chezmoi manages on this host.
-chezmoi_user: "{{ ansible_user }}"
-
-# Leave unset (the default) to only ensure the chezmoi binary is installed,
-# without touching any existing chezmoi state. Set this per-host once you
-# want ansible to (re)initialise chezmoi from a source repo:
-# chezmoi_source_repo: git@github.com:example/dotfiles.git
-chezmoi_source_repo: ""

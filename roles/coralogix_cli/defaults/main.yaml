@@ -1,0 +1,12 @@
+---
+# cx CLI: pinned GitHub release version, no apt repo to auto-track - same
+# pattern as k9s/kubectx in the k8s_tools role. Bump here to upgrade; check
+# https://github.com/coralogix/cx-cli/releases for the latest.
+coralogix_cli_version: "0.1.15"
+
+# Claude Code skill bundle installed automatically via the `skills`
+# installer (https://github.com/coralogix/cx-cli/blob/master/skills/README.md) -
+# covers Olly (Coralogix's observability agent), docs search, and dashboard
+# building. Installed globally (-g, i.e. into ~/.claude/skills) and scoped
+# to Claude Code (-a claude-code) for the connecting user.
+coralogix_cli_skill_bundle: "coralogix/cx-cli"

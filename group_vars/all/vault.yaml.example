@@ -1,0 +1,11 @@
+---
+# Copy this file to group_vars/all/vault.yaml and fill in the real key:
+#
+#   cp group_vars/all/vault.yaml.example group_vars/all/vault.yaml
+#   $EDITOR group_vars/all/vault.yaml
+#
+# group_vars/all/vault.yaml is gitignored - it stays in cleartext and is
+# never committed. If this repo ever gets pushed somewhere or shared,
+# switch to `ansible-vault encrypt group_vars/all/vault.yaml` instead and
+# remove it from .gitignore.
+otelcol_coralogix_private_key: "REPLACE_ME"

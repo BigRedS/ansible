@@ -1,25 +1,55 @@
 ---
-# donkey: application/subsystem name for host-level telemetry (hostmetrics)
-# defaults to the ansible hostname ("donkey") already, so no override needed
-# here.
+# Apache on ipv4 only, leave ipv6 for k3s
+apache_listen_address: "0.0.0.0"
 
-# donkey-config.yaml (the hand-written config this replaces) used
-# eu2.coralogix.com, not the coralogix.com in group_vars/all/main.yml -
-# override here until that default is confirmed/updated account-wide.
-otelcol_coralogix_domain: eu2.coralogix.com
+# Similar for docker; only git.avi.st listens externally (port 2222) so restrict
+# that to ipv4
+docker_compose_ipv4_ports:
+  - file: /home/avi/sites/git/compose.yaml
+    bind_address: "0.0.0.0"
+    ports: ["10880:3000", "2222:22"]
 
-# The wordpress/piwigo/fellscout filelog sources below live under
-# /home/avi/logs/, and /home/avi is 750 - otelcol-contrib can't traverse it
-# to reach them without being in the avi group.
+# k3s then gets the ipv6 interface
+# k3s_node_ip is the real public ipv6 address on donkey
+# the two cidrs are randomly generated with  https://www.unique-local-ipv6.com/
+k3s_node_ip: "2001:41d0:305:2100::7bd"
+k3s_cluster_cidr: "fdd9:839d:edf::/56"
+k3s_service_cidr: "fdd9:839d:edf:1::/112"
+
+# k3s needs an ipv4 address for egress - to hit old-school ipv4-only endpoints
+# like Coralogix :)
+# This is the primary ipv4 address on donkey
+k3s_node_ip_v4: "91.134.243.132"
+
+# Add Tailscale's address to the SAN for k3s' apiserver cert so we can get
+# in on the TS interface. By defaultthis only includes k3s_node_ip
+k3s_tls_san:
+  - "100.67.57.69"
+  - "fd7a:115c:a1e0::2d32:3946"
+
+# At the end we'll download k3s' kubeconfig, but that calls it 'default' and has
+# the host as localhost. These are the values we replace that with - a human-friendly
+# name for the context, and the Tailscale address we can hit the apiserver on
+k3s_kubeconfig_name: "farfaraway"
+k3s_kubeconfig_server_host: "100.67.57.69"
+
+# Firewall:
+#
+# port 2222 is git.avi.st's ssh access
+# interface_in: tailscale0 restricts access to k3s' apiserver to tailscale
+ufw_rules:
+  - { rule: allow, port: "22", proto: tcp }
+    { rule: allow, port: "2222", proto: tcp}
+  - { rule: allow, port: "80", proto: tcp }
+  - { rule: allow, port: "443", proto: tcp }
+  - { rule: allow, port: "6443", proto: tcp, interface_in: tailscale0 }
+ufw_manage_defaults: true
+ufw_enable: true
+
+# My Apache logs are in ~/logs/ which is owned avi:avi, so we stick the
+# otelcol user in the 'avi' group to let it read them
 otelcol_extra_groups: ["avi"]
 
-# Log sources tailed from donkey-config.yaml, each routed to its own
-# Coralogix application/subsystem as it was before. Assigned directly
-# (not "otelcol_filelog_pipelines + [...]") because the installed
-# ansible-core (2.19.4) throws "Recursive loop detected in template" on
-# that self-referencing extend pattern - see README's override-pattern
-# section for the caveat. Harmless here since the role default is always
-# [], so extending it and assigning outright are equivalent anyway.
 otelcol_filelog_pipelines:
   - name: wordpress
     include: ["/home/avi/logs/avi.st.access.log", "/home/avi/logs/avi.st.error.log"]
@@ -45,20 +75,9 @@ otelcol_filelog_pipelines:
     include: ['/home/avi/logs/coralogix-quota-rules.access.log', '/home/avi/logs/coralogix-quota-rules.access.log']
     application_name: cx-tools
     subsystem_name: quota-rules
-    
 
-# donkey has no /var/log/syslog or /var/log/auth.log (journald-only, no
-# rsyslog) - ship the journal directly instead of tailing flat files.
+# No /var/log/syslog to tail any more :(
 otelcol_enable_journald: true
 
 # Per-process metrics.
 otelcol_hostmetrics_processes_scraper: true
-
-# Not carried over from donkey-config.yaml (out of scope for the current
-# otelcol role - metrics + logs pipelines only, via hostmetrics + filelog):
-# - the syslog (rfc5424/TCP) receiver feeding fellscout logs over the network
-# - the otlp receiver
-# - hostmetrics tuning beyond the "processes" scraper toggle (10s interval,
-#   paging/system scrapers, load.cpu_average)
-# - the hardcoded host.name: swamp override - host.name is now always set to
-#   the ansible hostname ("donkey") instead

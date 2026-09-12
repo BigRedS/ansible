@@ -1,0 +1,28 @@
+{{ ansible_managed | comment }}
+# IPv6-primary (listed first everywhere below, so it's the default family
+# for Services/Ingress without an explicit ipFamilyPolicy) - cluster/service
+# networking lives in a ULA range NAT'd (flannel-ipv6-masq) out via this
+# node's real IPv6 address. k3s never *listens* on IPv4 - see README - but
+# optionally (k3s_node_ip_v4 set) gets a second, IPv4 family for pod
+# *egress* only, e.g. reaching IPv4-only external APIs. IPv4 masquerade is
+# flannel's default behaviour, unlike IPv6 above, so no extra flag is needed
+# for that side.
+node-ip: "{{ k3s_node_ip }}{% if k3s_node_ip_v4 %},{{ k3s_node_ip_v4 }}{% endif %}"
+advertise-address: "{{ k3s_node_ip }}"
+cluster-cidr: "{{ k3s_cluster_cidr }}{% if k3s_node_ip_v4 %},{{ k3s_cluster_cidr_v4 }}{% endif %}"
+service-cidr: "{{ k3s_service_cidr }}{% if k3s_node_ip_v4 %},{{ k3s_service_cidr_v4 }}{% endif %}"
+flannel-ipv6-masq: true
+# CoreDNS forwards using this file (dnsPolicy: Default reads the kubelet's
+# resolv-conf rather than cluster DNS, to avoid forwarding to itself) - see
+# templates/resolv.conf.j2 for why this can't just be the host's own file.
+resolv-conf: /etc/rancher/k3s/resolv.conf
+{% if k3s_tls_san %}
+# Extra addresses the apiserver's TLS cert should be valid for, beyond
+# node-ip/advertise-address above - needed for anything that reaches this
+# node's API by a different address (e.g. its Tailscale IP, since ufw only
+# allows 6443 in via tailscale0).
+tls-san:
+{% for san in k3s_tls_san %}
+  - "{{ san }}"
+{% endfor %}
+{% endif %}

@@ -1,0 +1,10 @@
+---
+# Always tracks latest - re-running the playbook is how this stays updated.
+# Installed globally via npm (requires the nodejs role to have run first),
+# so it lands in a root-owned global prefix and is on PATH for every user.
+- name: Install/update Claude Code
+  community.general.npm:
+    name: "{{ claude_code_npm_package }}"
+    global: true
+    state: latest
+  become: true

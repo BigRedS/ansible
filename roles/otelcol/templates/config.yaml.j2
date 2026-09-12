@@ -38,6 +38,14 @@ receivers:
       cx.application.name: "{{ otelcol_journald_application_name }}"
       cx.subsystem.name: "{{ otelcol_journald_subsystem_name }}"
 {% endif %}
+{% if otelcol_enable_otlp_receiver %}
+  otlp:
+    protocols:
+      grpc:
+        endpoint: "{{ otelcol_otlp_grpc_endpoint }}"
+      http:
+        endpoint: "{{ otelcol_otlp_http_endpoint }}"
+{% endif %}
 
 processors:
   resource:
@@ -76,5 +84,19 @@ service:
     logs:
       receivers: [{{ otelcol_log_receivers.names | join(', ') }}]
       processors: [resource, batch]
+      exporters: [coralogix]
+{% endif %}
+{% if otelcol_enable_otlp_receiver %}
+    metrics/otlp:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [coralogix]
+    traces/otlp:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [coralogix]
+    logs/otlp:
+      receivers: [otlp]
+      processors: [batch]
       exporters: [coralogix]
 {% endif %}

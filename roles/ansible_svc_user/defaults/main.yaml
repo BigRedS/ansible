@@ -1,0 +1,12 @@
+---
+# Deliberately named ansible_svc_user*, not ansible_user* - that name is
+# already taken by the inventory var meaning "the SSH connection user"
+# (see inventory/hosts.yaml's linux_boxes group vars).
+ansible_svc_user_name: ansible
+
+# Public key installed into ~ansible/.ssh/authorized_keys. Generate the
+# matching keypair ONCE on the control node before running this role:
+#   ssh-keygen -t ed25519 -f ~/.ssh/ansible_svc_user -C ansible-svc-user -N ""
+# Pulled live from the control node's ~/.ssh/ - deliberately not committed
+# to the repo, so rotating the key later needs zero repo changes.
+ansible_svc_user_public_key: "{{ lookup('file', '~/.ssh/ansible_svc_user.pub') }}"

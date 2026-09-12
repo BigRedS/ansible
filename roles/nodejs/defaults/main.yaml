@@ -1,0 +1,6 @@
+---
+# Major version stream to track via the NodeSource apt repo. Node itself
+# then stays current within that major via normal "apt upgrade" (the task
+# below also runs with state: latest, so a plain ansible-playbook run
+# upgrades it too). Bump this to move to a new major version.
+nodejs_major_version: "22"
