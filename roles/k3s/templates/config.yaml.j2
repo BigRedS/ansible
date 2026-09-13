@@ -16,6 +16,12 @@ flannel-ipv6-masq: true
 # resolv-conf rather than cluster DNS, to avoid forwarding to itself) - see
 # templates/resolv.conf.j2 for why this can't just be the host's own file.
 resolv-conf: /etc/rancher/k3s/resolv.conf
+{% if k3s_disable %}
+disable:
+{% for component in k3s_disable %}
+  - "{{ component }}"
+{% endfor %}
+{% endif %}
 {% if k3s_tls_san %}
 # Extra addresses the apiserver's TLS cert should be valid for, beyond
 # node-ip/advertise-address above - needed for anything that reaches this

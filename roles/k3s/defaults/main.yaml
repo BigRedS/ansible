@@ -18,14 +18,42 @@ k3s_service_cidr: "" # ULA /112 (k3s's max mask for service-cidr) within the clu
 # masquerade out as - the same real IPv4 apache/docker already use for
 # inbound is fine, since NAT egress uses ephemeral ports and doesn't
 # collide with them listening on :80/:443. IPv4 stays listed second
-# everywhere below, so it never becomes the primary family: a HelmChartConfig
-# (templates/traefik-helmchartconfig.yaml.j2) pins the bundled Traefik's own
-# Service to IPv6-only explicitly too, as a second guarantee it never claims
-# an IPv4 port. Leaving this unset keeps the whole host single-stack IPv6, as
-# before.
+# everywhere below, so it never becomes the primary family. Leaving this
+# unset keeps the whole host single-stack IPv6, as before.
+#
+# This does NOT stop k3s's bundled Traefik/ServiceLB from claiming ports
+# 80/443 on IPv4 too - see k3s_disable below for why that needs disabling
+# outright rather than pinning at the Service level.
 k3s_node_ip_v4: "" # this host's real IPv4 address
 k3s_cluster_cidr_v4: "10.42.0.0/16" # k3s's own stock IPv4 default - private/internal, not host-specific
 k3s_service_cidr_v4: "10.43.0.0/16" # k3s's own stock IPv4 default - private/internal, not host-specific
+
+# k3s bundled components to disable (e.g. ["traefik", "servicelb"]) - empty
+# list is a no-op, same as k3s's own default. Needed on any host that runs
+# other services on the same real IP (see host_vars/donkey.yaml): k3s's
+# ServiceLB claims a Service's hostPort with no hostIP set, which binds
+# *both* address families on the node regardless of the Service's own
+# ipFamilies restriction - there's no annotation/flag to scope it to one
+# family (checked against k3s's servicelb.go source, 2026-09). Pinning the
+# Service to IPv6-only (as this role used to do via a HelmChartConfig) only
+# constrains the ClusterIP, not ServiceLB's hostPort claim - it doesn't
+# actually fix the conflict. Disable the bundled component entirely and
+# deploy your own instead, with hostIP set explicitly on each port (see
+# e.g. the farfaraway cluster repo's own traefik/ for the replacement).
+k3s_disable: []
+
+# Lets any unprivileged process on this host bind ports <1024
+# (net.ipv4.ip_unprivileged_port_start = 0) - off by default since it's a
+# host-wide relaxation, not scoped to one workload. Needed for a
+# hostNetwork: true k8s workload (e.g. your own replacement Traefik, once
+# k3s's bundled one is disabled above) to bind ports 80/443 directly as
+# non-root: the obvious-looking fix - a pod-level securityContext.sysctls
+# override - is flatly rejected by the API server for hostNetwork pods
+# ("may not be specified when hostNetwork is true"), since a hostNetwork
+# pod shares the host's actual network namespace rather than getting its
+# own to scope a pod-level sysctl to. Only option left is the host-wide
+# setting here.
+k3s_allow_unprivileged_port_bind: false
 
 # Upstream resolvers for k3s's own CoreDNS forwarding (see
 # templates/resolv.conf.j2) - IPv6-only, since the pod network has no IPv4

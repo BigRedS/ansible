@@ -27,6 +27,22 @@ k3s_tls_san:
   - "100.67.57.69"
   - "fd7a:115c:a1e0::2d32:3946"
 
+# k3s's bundled Traefik/ServiceLB claims ports 80/443 on BOTH address
+# families via ServiceLB's hostPort (no hostIP set) - conflicts with
+# apache owning those ports on ipv4. There's no way to scope ServiceLB to
+# one family (see roles/k3s/defaults/main.yaml), so disable both outright;
+# the farfaraway cluster repo deploys its own Traefik instead, with
+# hostIP pinned to k3s_node_ip explicitly.
+k3s_disable:
+  - "traefik"
+  - "servicelb"
+
+# Our own replacement Traefik (farfaraway/traefik/) runs hostNetwork: true
+# to bind 80/443 by a specific IP - as a non-root container, that needs
+# this host-wide relaxation (see roles/k3s/defaults/main.yaml for why a
+# pod-level sysctl can't be used instead for a hostNetwork pod).
+k3s_allow_unprivileged_port_bind: true
+
 # At the end we'll download k3s' kubeconfig, but that calls it 'default' and has
 # the host as localhost. These are the values we replace that with - a human-friendly
 # name for the context, and the Tailscale address we can hit the apiserver on
@@ -39,7 +55,7 @@ k3s_kubeconfig_server_host: "100.67.57.69"
 # interface_in: tailscale0 restricts access to k3s' apiserver to tailscale
 ufw_rules:
   - { rule: allow, port: "22", proto: tcp }
-    { rule: allow, port: "2222", proto: tcp}
+  - { rule: allow, port: "2222", proto: tcp }
   - { rule: allow, port: "80", proto: tcp }
   - { rule: allow, port: "443", proto: tcp }
   - { rule: allow, port: "6443", proto: tcp, interface_in: tailscale0 }

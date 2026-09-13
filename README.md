@@ -89,11 +89,7 @@ Set the account's password by hand (`sudo passwd ansible`, from bitwarden), and 
   `base_packages` - needed because `--tags ufw` alone skips that role.
   `ufw_quiet_console` (on by default) drops the kernel's console log level
   so `[UFW BLOCK]` messages stop hitting every tty - a `kernel.printk`
-  setting, not syslog, and doesn't affect what's logged elsewhere. On
-  `donkey`: only 22/80/443 open generally, plus 6443 (k3s's API) restricted
-  to the `tailscale0` interface. Deliberately doesn't open gogs'
-  git-over-ssh port (2222) - `git clone`/`push` over
-  `ssh://git@git.avi.st:2222/...` only works from inside the tailnet now.
+  setting, not syslog, and doesn't affect what's logged elsewhere.
 - **k8s_tools/krew**: installed per-user (`~/.krew`), unlike the rest of the
   role. Ansible doesn't add `~/.krew/bin` to `PATH` - do that by hand or via
   chezmoi.
@@ -131,13 +127,32 @@ Set the account's password by hand (`sudo passwd ansible`, from bitwarden), and 
 - `k3s`: IPv6-primary - cluster/service CIDRs are a ULA range NAT'd out via
   `flannel-ipv6-masq`, `k3s_node_ip` is the host's real public IPv6.
   Optionally dual-stack for pod *egress* only (`k3s_node_ip_v4`, e.g. to
-  reach IPv4-only external APIs) - the bundled Traefik is pinned to
-  IPv6-only regardless (`templates/traefik-helmchartconfig.yaml.j2`), so it
-  never claims the IPv4 port apache/docker already use. CoreDNS forwards
-  via a k3s-specific `resolv.conf` of IPv6-only public resolvers, since the
-  pod network has no IPv4 route out. A sysctl
-  (`net.ipv6.conf.all.accept_ra = 2`) stops k3s losing its IPv6 default
-  route after install.
+  reach IPv4-only external APIs). CoreDNS forwards via a k3s-specific
+  `resolv.conf` of IPv6-only public resolvers, since the pod network has no
+  IPv4 route out. A sysctl (`net.ipv6.conf.all.accept_ra = 2`) stops k3s
+  losing its IPv6 default route after install.
+- `k3s_disable`/`k3s_allow_unprivileged_port_bind` (`donkey`): k3s's bundled
+  Traefik+ServiceLB claims a Service's `hostPort` with no `hostIP` set,
+  which binds *both* address families on the node regardless of the
+  Service's own `ipFamilies` - no annotation/flag scopes it to one family
+  (checked against k3s's `servicelb.go` source). Pinning the Service to
+  IPv6-only at the Helm-values level (an earlier approach here, since
+  removed) only constrains the ClusterIP - it doesn't stop ServiceLB's
+  `hostPort` claim from grabbing IPv4 too, conflicting with apache. Fix:
+  disable both bundled components outright (`k3s_disable`) and run your own
+  Traefik instead - see the `farfaraway` cluster repo's `traefik/` for the
+  replacement, which needs `hostNetwork: true` to bind a specific host IP
+  (a plain `hostPort`+`hostIP` on the container port isn't enough - the
+  chart also feeds `hostIP` into Traefik's own entrypoint bind address,
+  which only resolves inside the pod's own netns if that's actually the
+  host's). Non-root + `hostNetwork` then can't bind ports <1024 at all -
+  the obvious fix, `securityContext.capabilities.add: [NET_BIND_SERVICE]`,
+  is a silent no-op due to a long-standing Kubernetes bug
+  ([kubernetes/kubernetes#56374](https://github.com/kubernetes/kubernetes/issues/56374)),
+  and a pod-level `sysctls` override for
+  `net.ipv4.ip_unprivileged_port_start` is flatly rejected by the API
+  server for `hostNetwork` pods (no separate netns to scope it to) - the
+  only remaining fix is host-wide, hence this ansible var.
 - `k3s` kubeconfig fetch/merge: k3s bakes a loopback address (`127.0.0.1` or
   `[::1]`, depending on IP family) into its generated kubeconfig, and its
   cert is only valid for `k3s_node_ip`/`k3s_tls_san` - `k3s_kubeconfig_server_host`

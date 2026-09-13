@@ -10,6 +10,17 @@
   when: k3s_node_ip | length > 0
   notify: Reload sysctl
 
+- name: Let unprivileged processes bind ports below 1024 (see k3s_allow_unprivileged_port_bind in defaults/main.yaml)
+  ansible.builtin.template:
+    src: 99-unprivileged-ports.conf.j2
+    dest: /etc/sysctl.d/99-unprivileged-ports.conf
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  when: k3s_allow_unprivileged_port_bind
+  notify: Reload sysctl
+
 - name: Ensure /etc/rancher/k3s exists
   ansible.builtin.file:
     path: /etc/rancher/k3s
@@ -64,18 +75,12 @@
   become: true
   when: k3s_node_ip | length > 0
 
-- name: Pin bundled Traefik to IPv6-only (see templates/traefik-helmchartconfig.yaml.j2)
-  ansible.builtin.template:
-    src: traefik-helmchartconfig.yaml.j2
-    dest: /var/lib/rancher/k3s/server/manifests/traefik-config.yaml
-    owner: root
-    group: root
-    mode: "0600"
+- name: Remove the old Traefik IPv6-pin HelmChartConfig (didn't actually stop ServiceLB claiming IPv4 - see k3s_disable in defaults/main.yaml)
+  ansible.builtin.file:
+    path: /var/lib/rancher/k3s/server/manifests/traefik-config.yaml
+    state: absent
   become: true
-  when: k3s_node_ip_v4 | length > 0
-  # No restart needed - k3s's embedded controller watches this directory and
-  # reconciles the HelmChartConfig against the running Traefik chart on its
-  # own.
+  when: k3s_node_ip | length > 0
 
 - name: Fetch k3s's generated kubeconfig
   ansible.builtin.fetch:

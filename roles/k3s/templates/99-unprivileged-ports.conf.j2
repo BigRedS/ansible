@@ -1,0 +1,8 @@
+{{ ansible_managed | comment }}
+# Lets any unprivileged (non-root) process on this host bind ports <1024 -
+# needed for a hostNetwork: true k8s workload to bind ports 80/443 directly
+# as non-root (see k3s_allow_unprivileged_port_bind in defaults/main.yaml
+# for why this can't just be a pod-level sysctl instead). Despite the
+# "ipv4" name, this is the one knob Linux's bind() permission check uses
+# for both address families - there's no separate ipv6 variant.
+net.ipv4.ip_unprivileged_port_start = 0
